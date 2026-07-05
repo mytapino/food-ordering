@@ -1,49 +1,155 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
 import { getPurchases } from "@/app/lib/orders-storage";
 import { supabase } from "@/app/lib/supabaseClient";
 
-// server component (ไม่มี "use client") เพราะหน้านี้แค่ "อ่านแล้วแสดง"
-// ดึงข้อมูลด้วย await ตรง ๆ ได้เลย ไม่ต้องใช้ useState/useEffect
-export const dynamic = "force-dynamic"; // ให้ข้อมูลสดเสมอ ไม่ถูก cache
+export const dynamic = "force-dynamic";
 
-export default async function PurchasesPage() {
-  if (!supabase)
-    return <p className="warn">ยังไม่ได้เชื่อม Supabase — ตั้งค่า .env.local ก่อน</p>;
+const PAGE_SIZE = 100;
 
-  // ดึง log การสั่ง เรียงรายการล่าสุดก่อน
-  const purchases = await getPurchases(100);
+export default function PurchasesPage() {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [tableFilter, setTableFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    async function loadOrders() {
+      if (!supabase) {
+        setLoading(false);
+        return;
+      }
+
+      const data = await getPurchases();
+      const sorted = [...data].sort(
+        (a, b) => new Date(b.created_at) - new Date(a.created_at)
+      );
+
+      setOrders(sorted);
+      setLoading(false);
+      setCurrentPage(1);
+    }
+
+    loadOrders();
+  }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [tableFilter]);
+
+  const tableOptions = useMemo(() => {
+    const tables = [...new Set(orders.map((order) => String(order.table_number)).filter(Boolean))];
+    return tables.sort((a, b) => Number(a) - Number(b));
+  }, [orders]);
+
+  const filteredOrders = useMemo(() => {
+    if (tableFilter === "all") return orders;
+    return orders.filter((order) => String(order.table_number) === tableFilter);
+  }, [orders, tableFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const pagedOrders = useMemo(() => {
+    const startIndex = (currentPage - 1) * PAGE_SIZE;
+    return filteredOrders.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [filteredOrders, currentPage]);
 
   return (
-    <div>
-      <h2 className="page-title">รายการสั่งซื้อ (ล่าสุด 100 รายการ)</h2>
-      <p className="muted" style={{ marginBottom: "0.9rem" }}>
-        รวมจากทุกโต๊ะ ทุกเครื่องที่เชื่อมฐานข้อมูลเดียวกัน — ลองให้เพื่อนสั่งจากเครื่องของเขา แล้วรีเฟรชหน้านี้
-      </p>
+    <div className="order-shell">
+      <div className="order-hero">
+        <div>
+          <h2 className="page-title">รายการคำสั่งซื้อ</h2>
+          <p className="order-summary">
+            {loading
+              ? "กำลังโหลดรายการคำสั่ง..."
+              : `แสดง ${filteredOrders.length} รายการ · เรียงจากล่าสุดก่อน`}
+          </p>
+        </div>
+        <div className="order-badge">ล่าสุดก่อน</div>
+      </div>
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>เมนู</th>
-            <th className="td-center">โต๊ะ</th>
-            <th className="td-center">จำนวน</th>
-            <th className="td-right">ยอด</th>
-            <th>เวลา</th>
-          </tr>
-        </thead>
-        <tbody>
-          {purchases.map((row) => (
-            <tr key={row.id}>
-              <td>{row.product_name}</td>
-              <td className="td-center">{row.table_number}</td>
-              <td className="td-center">{row.quantity}</td>
-              <td className="td-right">{Number(row.total).toLocaleString()} ฿</td>
-              <td className="td-muted">{new Date(row.created_at).toLocaleString("th-TH")}</td>
-            </tr>
-          ))}
-          {purchases.length === 0 && (
-            <tr><td colSpan={5} className="empty-row">ยังไม่มีรายการ</td></tr>
-          )}
-        </tbody>
-      </table>
+      <div className="order-toolbar">
+        <div>
+          <h3 className="section-title">ตัวกรองและเรียงลำดับ</h3>
+          <p className="muted">เลือกโต๊ะเพื่อดูคำสั่งเฉพาะที่ต้องการ</p>
+        </div>
+
+        <div className="order-filter">
+          <label className="muted" htmlFor="table-filter">กรองตามโต๊ะ</label>
+          <select
+            id="table-filter"
+            className="select"
+            value={tableFilter}
+            onChange={(e) => setTableFilter(e.target.value)}
+          >
+            <option value="all">ทุกโต๊ะ</option>
+            {tableOptions.map((table) => (
+              <option key={table} value={table}>โต๊ะ {table}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="muted">กำลังโหลดรายการสั่ง...</p>
+      ) : (
+        <div className="panel">
+          <div className="pagination-bar">
+            <span className="muted">หน้า {currentPage} / {totalPages}</span>
+            <div className="pagination-actions">
+              <button
+                className="btn btn-secondary"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={currentPage === 1}
+              >
+                ก่อนหน้า
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                disabled={currentPage === totalPages}
+              >
+                ถัดไป
+              </button>
+            </div>
+          </div>
+
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>เมนู</th>
+                <th className="td-center">โต๊ะ</th>
+                <th className="td-center">จำนวน</th>
+                <th className="td-right">ยอด</th>
+                <th>เวลา</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pagedOrders.map((row) => (
+                <tr key={row.id}>
+                  <td>{row.product_name}</td>
+                  <td className="td-center">{row.table_number}</td>
+                  <td className="td-center">{row.quantity}</td>
+                  <td className="td-right">{Number(row.total).toLocaleString()} ฿</td>
+                  <td className="td-muted">{new Date(row.created_at).toLocaleString("th-TH")}</td>
+                </tr>
+              ))}
+              {pagedOrders.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="empty-row">ไม่พบรายการสำหรับโต๊ะที่เลือก</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

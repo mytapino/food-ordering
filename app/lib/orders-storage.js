@@ -50,13 +50,19 @@ export async function placeOrder(items, tableNumber) {
   if (error) throw error;
 }
 
-// ดึง log การสั่งล่าสุด (จำกัดจำนวนแถว)
-export async function getPurchases(limit = 100) {
-  const { data, error } = await supabase
+// ดึง log การสั่ง เรียงล่าสุดก่อน
+// ถ้าไม่ส่ง limit จะดึงทั้งหมดเพื่อใช้ในหน้าแสดงรายการแบบ paginated
+export async function getPurchases(limit) {
+  let query = supabase
     .from("purchases")
     .select()
-    .order("created_at", { ascending: false })
-    .limit(limit);
+    .order("created_at", { ascending: false });
+
+  if (typeof limit === "number") {
+    query = query.limit(limit);
+  }
+
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
 }

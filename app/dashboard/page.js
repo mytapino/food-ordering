@@ -25,7 +25,10 @@ export default async function DashboardPage() {
   }
   const bestSellers = Object.entries(byMenu)
     .map(([name, v]) => ({ name, ...v }))
-    .sort((a, b) => b.dishes - a.dishes);
+    .sort((a, b) => b.dishes - a.dishes)
+    .slice(0, 5);
+
+  const maxDishCount = Math.max(1, ...bestSellers.map((item) => item.dishes));
 
   // ---- จัดกลุ่ม "โต๊ะที่คึกคัก" (ยอดต่อโต๊ะ) ----
   const byTable = {};
@@ -52,7 +55,29 @@ export default async function DashboardPage() {
 
       {/* เมนูขายดี */}
       <div className="panel">
-        <h3 className="section-title">เมนูขายดี</h3>
+        <h3 className="section-title">เมนูขายดี 5 อันดับแรก</h3>
+
+        {bestSellers.length > 0 ? (
+          <div className="chart-card">
+            {bestSellers.map((item) => (
+              <div key={item.name} className="chart-row">
+                <div className="chart-labels">
+                  <span className="chart-name">{item.name}</span>
+                  <span className="chart-value">{item.dishes} จาน</span>
+                </div>
+                <div className="chart-track" aria-hidden="true">
+                  <div
+                    className="chart-bar"
+                    style={{ width: `${(item.dishes / maxDishCount) * 100}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="muted">ยังไม่มีข้อมูลเมนูขายดี</p>
+        )}
+
         <table className="data-table">
           <thead>
             <tr>
